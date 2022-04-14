@@ -878,9 +878,12 @@ function placement.closest_corner(d, args)
 
     -- Transpose the corner back to the original size
     local new_args = setmetatable({position = corner}, {__index=args})
-    local ngeo = placement_private.align(d, new_args)
 
-    return fix_new_geometry(ngeo, args, true), corner
+    -- for mouse cursor warp:
+    -- local ngeo = placement_private.align(d, new_args)
+    -- return fix_new_geometry(ngeo, args, true), corner
+
+    return new_args, corner
 end
 
 --- Place the client so no part of it will be outside the screen (workarea).

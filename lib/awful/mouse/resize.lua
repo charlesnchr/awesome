@@ -19,6 +19,7 @@ local module = {}
 local mode      = "live"
 local req       = "request::geometry"
 local callbacks = {enter={}, move={}, leave={}}
+local math = math
 
 local cursors = {
     ["mouse.move"               ] = "fleur",
@@ -90,6 +91,43 @@ function module.add_leave_callback(cb, context)
     table.insert(callbacks.leave[context], cb)
 end
 
+-- convenience printing for debug
+function dump(o)
+   if type(o) == 'table' then
+      local s = '{ '
+      for k,v in pairs(o) do
+         if type(k) ~= 'number' then k = '"'..k..'"' end
+         s = s .. '['..k..'] = ' .. dump(v) .. ','
+      end
+      return s .. '} '
+   else
+      return tostring(o)
+   end
+end
+
+-- get coordinates
+local resize_coordinates = {
+    -- Corners
+    top_left     = {0,0},
+    top_right    = {1,0},
+    bottom_left  = {0,1},
+    bottom_right = {1,1},
+
+    -- Sides
+    left         = {0,0.5},
+    right        = {1,0.5},
+    top          = {0.5,0},
+    bottom       = {0.5,1},
+}
+
+-- Convert a rectangle and matrix info into a point
+local function rect_to_point(rect, corner_i, corner_j)
+    return {
+        x = rect.x + corner_i * math.floor(rect.width ),
+        y = rect.y + corner_j * math.floor(rect.height),
+    }
+end
+
 --- Resize the drawable.
 --
 -- Valid `args` are:
@@ -134,6 +172,8 @@ local function handler(_, client, context, args) --luacheck: no unused_args
         end
     end
 
+
+
     if args.enter_callback then
         geo = args.enter_callback(client, args)
 
@@ -153,9 +193,27 @@ local function handler(_, client, context, args) --luacheck: no unused_args
         or cursors[context]
         or "fleur"
 
+    if context == "mouse.resize" then
+        local pts = resize_coordinates[args.corner]
+        local g = client:geometry()
+        local p  = rect_to_point(g, pts[1], pts[2])
+
+        local corner_x, corner_y = p.x, p.y
+        local mouse_coords = args.mousecoords
+        x = mouse_coords.x
+        y = mouse_coords.y
+        coordinates_delta = {x=corner_x-x,y=corner_y-y}
+    end
+
+
     -- Execute the placement function and use request::geometry
     capi.mousegrabber.run(function (_mouse)
         if not client.valid then return end
+
+        if context == "mouse.resize" then
+            _mouse.x = _mouse.x + coordinates_delta.x
+            _mouse.y = _mouse.y + coordinates_delta.y
+        end
 
         -- Resize everytime the mouse moves (default behavior) in live mode,
         -- otherwise keep the current geometry
@@ -183,6 +241,7 @@ local function handler(_, client, context, args) --luacheck: no unused_args
             end
         end
 
+
         -- In case it was modified
         if geo then
             setmetatable(geo, {__index=args})
@@ -190,6 +249,34 @@ local function handler(_, client, context, args) --luacheck: no unused_args
 
         if args.mode == "live" then
             -- Ask the resizing handler to resize the client
+            if context == "mouse.resize" then
+                local corner = args.corner
+                local g = client:geometry()
+
+                if corner == "bottom_right" then
+                    geo = { width = _mouse.x - g.x,
+                    height = _mouse.y - g.y }
+                elseif corner == "bottom_left" then
+                    geo = { x = _mouse.x,
+                    width = (g.x + g.width) - _mouse.x,
+                    height = _mouse.y - g.y }
+                elseif corner == "top_left" then
+                    geo = { x = _mouse.x,
+                    width = (g.x + g.width) - _mouse.x,
+                    y = _mouse.y,
+                    height = (g.y + g.height) - _mouse.y }
+                else
+                    geo = { width = _mouse.x - g.x,
+                    y = _mouse.y,
+                    height = (g.y + g.height) - _mouse.y }
+                end
+                if geo.width <= 10 then geo.width = 10 end
+                if geo.height <= 10 then geo.height = 10 end
+                -- if fixed_x then ng.width = g.width ng.x = g.x end
+                -- if fixed_y then ng.height = g.height ng.y = g.y end
+                -- c:geometry(ng)
+            end
+
             client:emit_signal(req, context, geo)
         end
 

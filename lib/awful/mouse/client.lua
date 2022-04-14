@@ -119,7 +119,8 @@ function module.resize(c, corner, args)
     -- Set some default arguments
     local new_args = setmetatable(
         {
-            include_sides = (not args) or args.include_sides ~= false
+            -- include_sides = (not args) or args.include_sides ~= false
+            include_sides = false
         },
         {
             __index = args or {}
@@ -138,6 +139,7 @@ function module.resize(c, corner, args)
     end
 
     new_args.corner = corner
+    new_args.mousecoords = capi.mouse.coords()
 
     mresize(c, "mouse.resize", new_args)
 
